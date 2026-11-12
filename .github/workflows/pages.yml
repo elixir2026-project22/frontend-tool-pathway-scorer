@@ -18,14 +18,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v7
-    - name: Page artifacts
-      uses: actions/upload-pages-artifact@v3
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: .
-    - name: Install Python
-      run: sudo apt-get update && sudo apt-get install -y python3 && sudo ln -fs /usr/bin/python3 /usr/bin/python
+      - run: sudo apt-get update && sudo apt-get install -y python3 && sudo ln -fs /usr/bin/python3 /usr/bin/python
 
   deploy:
     needs: build

@@ -553,7 +553,7 @@ const EXAMPLES = __EXAMPLES__;
       overlaps: `Pass ≤ ${t.overlaps.pass}, fail ≥ ${t.overlaps.fail}`,
     };
     const what = {
-      cycle: "A circle is fitted through the metabolites of the largest cycle (or the one you name). Score is the circle fit (1 = perfect circle) times the share of steps going round in one direction.",
+      cycle: "A closed loop is fitted through the metabolites of the largest cycle (or the one you name). Score is the closed loop fit (1 = perfect loop) times the share of steps going round in one direction.",
       clones: "Number of cofactors such as ATP, NADH or H₂O that are drawn once and connected to more than one reaction instead of being drawn as separate copies.",
       crossings: "Number of places where two lines cross, divided by the number of lines. Lines that share a node are not counted against each other.",
       placement: "Share of reactions whose substrates and products sit on opposite sides of the reaction node (at least 120° apart).",
@@ -594,7 +594,7 @@ const EXAMPLES = __EXAMPLES__;
 
   // ---------------------------------------------------------------- settings dialog
   const THR_ROWS = [
-    ["cycle", "Cycle shape (circle × order)", "high"], ["clones", "Cofactor hubs (count)", "low"], ["crossings", "Crossings per line", "low"],
+    ["cycle", "Cycle shape (loop × order)", "high"], ["clones", "Cofactor hubs (count)", "low"], ["crossings", "Crossings per line", "low"],
     ["placement", "Opposite substrates and products (share)", "high"], ["aspect", "Aspect ratio", "band"], ["longlines", "Longest line ÷ median", "low"],
     ["bends", "Bends per line", "low"], ["density", "Density (share of drawing)", "band"], ["overlaps", "Overlapping node pairs", "low"],
   ];

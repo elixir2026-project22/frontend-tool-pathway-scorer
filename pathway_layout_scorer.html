@@ -960,10 +960,10 @@ footer .container { display: flex; gap: 12px 30px; flex-wrap: wrap; justify-cont
     { id: "cycle", kind: "hard", name: "Cycles look like cycles",
       eval(r, t) {
         if (!r.cycle_len) return { na: true, value: "no cycle", detail: "No cycle of 4 or more metabolites found. Name one under Settings to check it." };
-        if (Number.isNaN(r.cycle_circularity)) return { na: true, value: "–", detail: "The cycle's nodes lie on a line, so no circle can be fitted." };
+        if (Number.isNaN(r.cycle_circularity)) return { na: true, value: "–", detail: "The cycle's nodes lie on a line, so no closed loop can be fitted." };
         const v = r.cycle_circularity * r.cycle_order_consistency;
-        return { v, s: highBetter(v, t.pass, t.fail), value: fmt(v), unit: "circle × order",
-          detail: `${r.cycle_len} metabolites, circle fit ${fmt(r.cycle_circularity)}, order ${fmt(r.cycle_order_consistency)} (${r.cycle_direction === "cw" ? "clockwise" : "counter-clockwise"}). Pass ≥ ${t.pass}.` };
+        return { v, s: highBetter(v, t.pass, t.fail), value: fmt(v), unit: "closed loop × order",
+          detail: `${r.cycle_len} metabolites, closed loop fit ${fmt(r.cycle_circularity)}, order ${fmt(r.cycle_order_consistency)} (${r.cycle_direction === "cw" ? "clockwise" : "counter-clockwise"}). Pass ≥ ${t.pass}.` };
       } },
     { id: "clones", kind: "hard", name: "Cofactors drawn as clones",
       eval(r, t) {
@@ -1289,7 +1289,7 @@ const EXAMPLES = [{"name": "F021-ureacycle.sbgn", "text": "<?xml version=\"1.0\"
       overlaps: `Pass ≤ ${t.overlaps.pass}, fail ≥ ${t.overlaps.fail}`,
     };
     const what = {
-      cycle: "A circle is fitted through the metabolites of the largest cycle (or the one you name). Score is the circle fit (1 = perfect circle) times the share of steps going round in one direction.",
+      cycle: "A closed loop is fitted through the metabolites of the largest cycle (or the one you name). Score is the closed loop fit (1 = perfect circle) times the share of steps going round in one direction.",
       clones: "Number of cofactors such as ATP, NADH or H₂O that are drawn once and connected to more than one reaction instead of being drawn as separate copies.",
       crossings: "Number of places where two lines cross, divided by the number of lines. Lines that share a node are not counted against each other.",
       placement: "Share of reactions whose substrates and products sit on opposite sides of the reaction node (at least 120° apart).",
@@ -1330,7 +1330,7 @@ const EXAMPLES = [{"name": "F021-ureacycle.sbgn", "text": "<?xml version=\"1.0\"
 
   // ---------------------------------------------------------------- settings dialog
   const THR_ROWS = [
-    ["cycle", "Cycle shape (circle × order)", "high"], ["clones", "Cofactor hubs (count)", "low"], ["crossings", "Crossings per line", "low"],
+    ["cycle", "Cycle shape (closed loop × order)", "high"], ["clones", "Cofactor hubs (count)", "low"], ["crossings", "Crossings per line", "low"],
     ["placement", "Opposite substrates and products (share)", "high"], ["aspect", "Aspect ratio", "band"], ["longlines", "Longest line ÷ median", "low"],
     ["bends", "Bends per line", "low"], ["density", "Density (share of drawing)", "band"], ["overlaps", "Overlapping node pairs", "low"],
   ];

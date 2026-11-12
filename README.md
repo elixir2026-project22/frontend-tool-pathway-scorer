@@ -16,7 +16,7 @@ The format is detected from the file content, so the extension does not matter.
  
 | Rule | Type | Measured as |
 |---|---|---|
-| Cycles look like cycles | required | circle fit × direction consistency of the largest cycle (or one you name) |
+| Cycles look like cycles | required | closed loop fit × direction consistency of the largest cycle (or one you name) |
 | Cofactors drawn as clones | required | cofactors drawn once but linked to more than one reaction |
 | No crossings | required | line crossings per line |
 | Consistent participant placement | required | share of reactions with substrates and products on opposite sides (≥ 120°) |

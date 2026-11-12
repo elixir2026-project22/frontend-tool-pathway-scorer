@@ -679,7 +679,7 @@
     return t0 <= t1;
   }
   function linesThroughNodes(m) {
-    const gs = m.nodes(null, SKIP_AREA).filter((g) => !g.nestedIn && !PROCESS.has(g.cls));
+    const gs = m.nodes(null, SKIP_AREA).filter((g) => !g.nestedIn);   // every node, reactions included (as in the Python tools)
     let n = 0; const pts = [];
     for (const a of m.arcs) {
       for (const g of gs) {
@@ -870,7 +870,7 @@
         if (r.lines_through_nodes === undefined) return { na: true, value: "–", detail: "" };
         const v = r.lines_through_nodes;
         return { v, s: lowBetter(v, t.pass, t.fail), value: String(v), unit: v === 1 ? "line" : "lines",
-          detail: "Lines that pass through a node they do not connect (exact segment/box test; reaction points excluded)." };
+          detail: "Lines that pass through a node they do not connect, reaction nodes included (exact segment/box test, node box shrunk by 2 px)." };
       } },
     { id: "aspect", kind: "hard", name: "Aspect ratio",
       eval(r, t) {

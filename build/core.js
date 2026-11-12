@@ -1,5 +1,16 @@
 /* Layout scoring core: a port of score_rules.py (Biohackathon 2026, metabolic map layout rules).
-   Works in the browser (DOMParser) and in node (pass a parsed XML Document). */
+   Works in the browser (DOMParser) and in node (pass a parsed XML Document).
+
+   Rules (kept in step with sbml_pathway_layout.py / svg_layout_metrics.py):
+     hard  Reproducible rendering            (from the Python tools; needs opts.reference = a second rendering)
+           Labels at fixed positions per type (from the Python tools; needs label geometry in the file)
+           Cycles look like cycles            (Python definition: drawn as a closed loop in cycle order)
+           Cofactors drawn as clones
+           No crossings
+           No line through a node             (from the Python tools)
+           Consistent participant placement
+           Aspect ratio
+     soft  Avoid long lines, Avoid bends, Density, No overlapping nodes */
 (function (root) {
   "use strict";
 
@@ -81,10 +92,12 @@
       if (!bb) continue;
       const f = (k) => parseFloat(attr(bb, k) || 0);
       const lab = kid(g, "label");
+      const lbb = lab ? kid(lab, "bbox") : null;
       m.addGlyph({
         id: gid, cls: attr(g, "class"), x: f("x"), y: f("y"), w: f("w"), h: f("h"),
         label: lab ? attr(lab, "text") || "" : "",
         clone: kids(g).some((c) => ln(c) === "clone"),
+        labelBox: lbb ? { x: parseFloat(attr(lbb, "x") || 0), y: parseFloat(attr(lbb, "y") || 0), w: parseFloat(attr(lbb, "w") || 0), h: parseFloat(attr(lbb, "h") || 0) } : null,
       });
       for (const d of descendants(g)) {
         const t = ln(d);
@@ -201,8 +214,13 @@
         const cu = sbmlCurve(kid(s, "curve"));
         const geo = cu && cu.pts.length >= 2 ? cu : { pts: [c, [g.cx, g.cy]], bends: 0 };
         const out = cls === "production";
-        m.arcs.push({ id: attr(s, "id"), cls, src: out ? rid : gid, tgt: out ? gid : rid, pts: geo.pts, bends: geo.bends });
+        m.arcs.push({ id: attr(s, "id"), cls, src: out ? rid : gid, tgt: out ? gid : rid, pts: geo.pts, bends: geo.bends,
+          side: /^side/.test(attr(s, "role") || "") });
       }
+    }
+    for (const tg of lay.filter((e) => ln(e) === "textGlyph")) {      // label geometry: text glyph boxes
+      const g = m.glyphs.get(attr(tg, "graphicalObject")); const b = box(tg);
+      if (g && b && !g.labelBox) g.labelBox = b;
     }
     return m;
   }
@@ -257,8 +275,10 @@
       m.addGlyph({ id: rid, cls: "process", x: c[0] - 5, y: c[1] - 5, w: 10, h: 10, label: rid, clone: false });
       const line = (gid) => [[m.glyphs.get(gid).cx, m.glyphs.get(gid).cy], c];
       let k = 0;
-      for (const a of [...bre, ...aliasesOf("reactantLink")]) m.arcs.push({ id: rid + ":" + k++, cls: "consumption", src: a, tgt: rid, pts: line(a), bends: 0 });
-      for (const a of [...bpr, ...aliasesOf("productLink")]) m.arcs.push({ id: rid + ":" + k++, cls: "production", src: rid, tgt: a, pts: line(a).reverse(), bends: 0 });
+      for (const a of bre) m.arcs.push({ id: rid + ":" + k++, cls: "consumption", src: a, tgt: rid, pts: line(a), bends: 0 });
+      for (const a of aliasesOf("reactantLink")) m.arcs.push({ id: rid + ":" + k++, cls: "consumption", src: a, tgt: rid, pts: line(a), bends: 0, side: true });
+      for (const a of bpr) m.arcs.push({ id: rid + ":" + k++, cls: "production", src: rid, tgt: a, pts: line(a).reverse(), bends: 0 });
+      for (const a of aliasesOf("productLink")) m.arcs.push({ id: rid + ":" + k++, cls: "production", src: rid, tgt: a, pts: line(a).reverse(), bends: 0, side: true });
       for (const mod of d.filter((x) => ln(x) === "modification")) {
         const cls = MOD[attr(mod, "type")] || "modulation";
         for (const a of (attr(mod, "aliases") || "").split(",").map((x) => x.trim()).filter((x) => m.glyphs.has(x)))
@@ -281,7 +301,9 @@
       const s = n.node_is_primary ? 30 : 20;
       const base = (n.bigg_id || "").replace(/_[a-z0-9]{1,2}$/i, "");
       m.addGlyph({ id, cls: "simple chemical", x: n.x - s / 2, y: n.y - s / 2, w: s, h: s,
-        label: n.name || n.bigg_id || id, keys: [normName(base), normName(n.bigg_id || "")], clone: false, bigg: n.bigg_id });
+        label: n.name || n.bigg_id || id, keys: [normName(base), normName(n.bigg_id || "")], clone: false, bigg: n.bigg_id,
+        primary: n.node_is_primary !== false,
+        labelBox: n.label_x !== undefined ? { x: n.label_x, y: n.label_y, w: 0, h: 0 } : null });
       perId.set(n.bigg_id, (perId.get(n.bigg_id) || 0) + 1);
     }
     for (const g of m.glyphs.values()) if (g.bigg && perId.get(g.bigg) > 1) g.clone = true;
@@ -296,7 +318,8 @@
       if (mid === undefined) continue;
       const mn = nodes[mid];
       const pid = "rxn:" + mid;
-      m.addGlyph({ id: pid, cls: "process", x: mn.x - 5, y: mn.y - 5, w: 10, h: 10, label: r.bigg_id || r.name || rid, clone: false });
+      m.addGlyph({ id: pid, cls: "process", x: mn.x - 5, y: mn.y - 5, w: 10, h: 10, label: r.bigg_id || r.name || rid, clone: false,
+        labelBox: r.label_x !== undefined ? { x: r.label_x, y: r.label_y, w: 0, h: 0 } : null });
       const coef = new Map((r.metabolites || []).map((x) => [x.bigg_id, x.coefficient]));
       for (const [sid, s] of segs) {
         const a = nodes[s.from_node_id], b = nodes[s.to_node_id];
@@ -312,7 +335,8 @@
         let pts = [p0, ...(c1 || c2 ? bezier(p0, c1 || p0, c2 || p1, p1, 6) : []), p1];
         if (!aMet) pts = pts.reverse(); // always metabolite -> marker
         const cls = c < 0 ? "consumption" : "production";
-        m.arcs.push({ id: rid + ":" + sid, cls, src: cls === "consumption" ? metId : pid, tgt: cls === "consumption" ? pid : metId, pts, bends: 0 });
+        m.arcs.push({ id: rid + ":" + sid, cls, src: cls === "consumption" ? metId : pid, tgt: cls === "consumption" ? pid : metId, pts, bends: 0,
+          side: met.node_is_primary === false });
       }
     }
     return m;
@@ -515,40 +539,168 @@
     }
     return cycles;
   }
-  function cycleMetrics(m, cur, cycleNames) {
-    const G = metaboliteGraph(m, cur);
-    let cyc = null;
-    const longest = (b) => b.reduce((best, c) => (!best || c.length > best.length ? c : best), null);
-    if (cycleNames && cycleNames.length) {
-      const want = new Set(cycleNames.map(normName));
-      const keep = new Set([...G.keys()].filter((n) => want.has(normName(m.glyphs.get(n).label))));
-      const S = new Map();
-      for (const n of keep) S.set(n, new Map([...G.get(n).keys()].filter((k) => keep.has(k)).map((k) => [k, true])));
-      cyc = longest(S.size ? cycleBasis(S) : []);
-    } else {
-      cyc = longest((G.size ? cycleBasis(G) : []).filter((c) => c.length >= 4));
+  // Simple cycles of an undirected graph (each once), length 3..maxLen, at most cap of them.
+  function simpleCycles(G, maxLen, cap) {
+    const order = [...G.keys()], idx = new Map(order.map((n, i) => [n, i])), out = [];
+    for (const s0 of order) {
+      const i0 = idx.get(s0), path = [s0], onPath = new Set([s0]);
+      const dfs = (v) => {
+        if (out.length >= cap) return;
+        for (const w of G.get(v).keys()) {
+          if (idx.get(w) < i0) continue;
+          if (w === s0 && path.length >= 3) { if (idx.get(path[1]) < idx.get(path[path.length - 1])) out.push([...path]); continue; }
+          if (onPath.has(w) || path.length >= maxLen) continue;
+          path.push(w); onPath.add(w); dfs(w); path.pop(); onPath.delete(w);
+        }
+      };
+      dfs(s0);
+      if (out.length >= cap) break;
     }
-    const empty = { cycle_len: 0, cycle_circularity: NaN, cycle_order_consistency: NaN, cycle_direction: "", cycle_members: "", _cycle: null };
-    if (!cyc || !cyc.length) return empty;
-    const key = (n) => [normName(m.glyphs.get(n).label), n];
-    const lt = (a, b) => (a[0] < b[0] ? true : a[0] > b[0] ? false : a[1] < b[1]);
-    let i = 0;
-    for (let k = 1; k < cyc.length; k++) if (lt(key(cyc[k]), key(cyc[i]))) i = k;
-    cyc = cyc.slice(i).concat(cyc.slice(0, i));
-    if (cyc.length > 1 && lt(key(cyc[cyc.length - 1]), key(cyc[1]))) cyc = [cyc[0], ...cyc.slice(1).reverse()];
-    const xy = cyc.map((n) => [m.glyphs.get(n).cx, m.glyphs.get(n).cy]);
-    const fc = fitCircle(xy);
-    if (!fc) return { ...empty, cycle_len: cyc.length, cycle_members: cyc.map((n) => m.glyphs.get(n).label).join("; ") };
-    const d = xy.map(([x, y]) => Math.hypot(x - fc.cx, y - fc.cy));
-    const circ = fc.r > 0 ? Math.max(0, 1 - std(d) / fc.r) : NaN;
-    const ang = xy.map(([x, y]) => Math.atan2(y - fc.cy, x - fc.cx));
-    const steps = ang.map((a, k) => pmod(ang[(k + 1) % ang.length] - a + Math.PI, 2 * Math.PI) - Math.PI);
-    const pos = mean(steps.map((s) => (s > 0 ? 1 : 0)));
-    return {
-      cycle_len: cyc.length, cycle_circularity: r3(circ), cycle_order_consistency: r3(Math.max(pos, 1 - pos)),
-      cycle_direction: pos >= 0.5 ? "cw" : "ccw", cycle_members: cyc.map((n) => m.glyphs.get(n).label).join("; "),
-      _cycle: { ids: cyc, circle: fc },
+    return out;
+  }
+  // Rule "cycles look like cycles", as defined in sbml_pathway_layout.py / svg_layout_metrics.py: a cycle passes when its
+  // metabolites and reaction nodes, in cycle order, form a closed loop - a polygon that does not cross itself, winds once
+  // around its centre in one direction and does not fold inwards (circle, stadium, rounded rectangle... all qualify).
+  function loopShape(m, cyc, step) {
+    const c = (id) => [m.glyphs.get(id).cx, m.glyphs.get(id).cy];
+    const g = [mean(cyc.map((n) => c(n)[0])), mean(cyc.map((n) => c(n)[1]))];
+    const pts = [];
+    for (let k = 0; k < cyc.length; k++) {
+      const a = cyc[k], b = cyc[(k + 1) % cyc.length];
+      pts.push(c(a));
+      const rs = step.get(a < b ? a + "\u0000" + b : b + "\u0000" + a) || [];
+      const want = (dist(c(a), g) + dist(c(b), g)) / 2;      // the step's reaction node ON the loop
+      let best = null;
+      for (const r of rs) { const d = Math.abs(dist(c(r), g) - want); if (!best || d < best[0]) best = [d, r]; }
+      if (best) pts.push(c(best[1]));
+    }
+    const cen = [mean(pts.map((p) => p[0])), mean(pts.map((p) => p[1]))];
+    const th = []; let prev = null, off = 0;
+    for (const p of [...pts, pts[0]]) {
+      let t = Math.atan2(p[1] - cen[1], p[0] - cen[0]);
+      if (prev !== null) { while (t + off - prev > Math.PI) off -= 2 * Math.PI; while (t + off - prev < -Math.PI) off += 2 * Math.PI; }
+      th.push(t + off); prev = t + off;
+    }
+    const d = th.slice(1).map((t, k) => t - th[k]);
+    const orderOk = (d.every((x) => x > -1e-9) || d.every((x) => x < 1e-9)) && Math.abs(Math.abs(th[th.length - 1] - th[0]) - 2 * Math.PI) < 0.5;
+    let simple = true;
+    const E = pts.map((p, k) => [p, pts[(k + 1) % pts.length]]);
+    for (let x = 0; x < E.length && simple; x++)
+      for (let y = x + 2; y < E.length; y++) {
+        if (x === 0 && y === E.length - 1) continue;
+        if (segX(E[x][0], E[x][1], E[y][0], E[y][1])) { simple = false; break; }
+      }
+    const turns = pts.map((b, k) => {
+      const a = pts[(k - 1 + pts.length) % pts.length], cc = pts[(k + 1) % pts.length];
+      const cr = (b[0] - a[0]) * (cc[1] - b[1]) - (b[1] - a[1]) * (cc[0] - b[0]);
+      return cr / ((dist(a, b) * dist(b, cc)) || 1);
+    });
+    const sign = Math.sign(turns.reduce((s, t) => s + t, 0)) || 1;
+    const folds = turns.filter((t) => t * sign < -0.35).length;
+    const fc = fitCircle(pts);
+    const circ = fc ? Math.max(0, 1 - std(pts.map(([x, y]) => Math.hypot(x - fc.cx, y - fc.cy))) / fc.r) : NaN;
+    return { ok: orderOk && simple && folds === 0, orderOk, simple, folds, circ, pts, circle: fc,
+      dir: (th[th.length - 1] - th[0]) > 0 ? "ccw" : "cw" };   // SVG/SBML y axis points down
+  }
+  function cycleMetrics(m, cur, cycleNames) {
+    // main steps only: substrate -> product of the same reaction, no secondary lines, no cofactors
+    const ins = new Map(), outs = new Map();
+    const push = (mp, k, v) => { if (!mp.has(k)) mp.set(k, []); mp.get(k).push(v); };
+    for (const a of m.arcs) {
+      if (a.side) continue;
+      if (INPUT.has(a.cls)) push(ins, a.tgt, a.src); else if (OUTPUT.has(a.cls)) push(outs, a.src, a.tgt);
+    }
+    const want = cycleNames && cycleNames.length ? new Set(cycleNames.map(normName)) : null;
+    const okNode = (n) => m.glyphs.has(n) && !isCurrency(m.glyphs.get(n), cur) && (!want || want.has(normName(m.glyphs.get(n).label)));
+    const G = new Map(), step = new Map();
+    const addE = (s, t, p) => {
+      if (!G.has(s)) G.set(s, new Map()); if (!G.has(t)) G.set(t, new Map());
+      G.get(s).set(t, true); G.get(t).set(s, true);
+      const k = s < t ? s + "\u0000" + t : t + "\u0000" + s; if (!step.has(k)) step.set(k, []); step.get(k).push(p);
     };
+    const pids = [...new Set([...ins.keys(), ...outs.keys()])].sort();
+    for (const p of pids) for (const s of ins.get(p) || []) for (const t of outs.get(p) || [])
+      if (s !== t && okNode(s) && okNode(t)) addE(s, t, p);
+    const cand = G.size ? simpleCycles(G, 16, 20000) : [];
+    const shp = new Map(cand.map((c) => [c, loopShape(m, c, step)]));
+    const main = []; let pool = cand.slice(); const used = new Set();
+    while (pool.length) {                                         // main cycles: the longest drawn as a closed loop (if at
+      const mx = Math.max(...pool.map((c) => c.length));          // least half as long as the longest loop), else the longest
+      const rnd = pool.filter((c) => shp.get(c).ok && c.length >= 0.5 * mx);
+      const pick = rnd.length ? rnd.reduce((b, c) => (c.length > b.length || (c.length === b.length && shp.get(c).circ > shp.get(b).circ) ? c : b))
+                              : pool.filter((c) => c.length === mx).reduce((b, c) => (shp.get(c).circ > shp.get(b).circ ? c : b));
+      main.push(pick); pick.forEach((n) => used.add(n));
+      pool = pool.filter((c) => !c.some((n) => used.has(n)));
+    }
+    const empty = { cycle_len: 0, cycles_main: 0, cycles_closed_loop: 0, cycle_closed_loop_share: NaN, cycle_circularity: NaN,
+      cycle_order_consistency: NaN, cycle_direction: "", cycle_members: "", cycle_alternative_routes: 0, _cycle: null };
+    if (!main.length) return empty;
+    const first = main[0], s0 = shp.get(first), nOk = main.filter((c) => shp.get(c).ok).length;
+    return {
+      cycle_len: first.length, cycles_main: main.length, cycles_closed_loop: nOk, cycle_closed_loop_share: r3(nOk / main.length),
+      cycle_circularity: r3(s0.circ), cycle_order_consistency: s0.orderOk ? 1 : 0, cycle_direction: s0.dir,
+      cycle_members: first.map((n) => m.glyphs.get(n).label).join("; "), cycle_alternative_routes: cand.length - main.length,
+      _cycle: { ids: first, circle: s0.circle, loop: s0.pts, ok: s0.ok },
+    };
+  }
+
+  // ------------------------------------------------------------- rules that come from the Python tools
+  // Liang-Barsky: does segment p-q pass through box b (grown by m)?
+  function segHitsBox(p, q, b, m) {
+    const x0 = b.x - m, y0 = b.y - m, x1 = b.x + b.w + m, y1 = b.y + b.h + m, dx = q[0] - p[0], dy = q[1] - p[1];
+    let t0 = 0, t1 = 1;
+    for (const [pp, qq] of [[-dx, p[0] - x0], [dx, x1 - p[0]], [-dy, p[1] - y0], [dy, y1 - p[1]]]) {
+      if (Math.abs(pp) < 1e-12) { if (qq < 0) return false; }
+      else if (pp < 0) t0 = Math.max(t0, qq / pp); else t1 = Math.min(t1, qq / pp);
+    }
+    return t0 <= t1;
+  }
+  function linesThroughNodes(m) {
+    const gs = m.nodes(null, SKIP_AREA).filter((g) => !g.nestedIn && !PROCESS.has(g.cls));
+    let n = 0; const pts = [];
+    for (const a of m.arcs) {
+      for (const g of gs) {
+        if (g.id === a.src || g.id === a.tgt) continue;
+        const shr = { x: g.x + 2, y: g.y + 2, w: g.w - 4, h: g.h - 4 };
+        if (shr.w <= 0 || shr.h <= 0) continue;
+        for (let k = 0; k < a.pts.length - 1; k++) if (segHitsBox(a.pts[k], a.pts[k + 1], shr, 0)) { n++; pts.push([g.cx, g.cy]); break; }
+      }
+    }
+    return { n, pts };
+  }
+  // labels at fixed positions per node type: spread of the label's offset from its node, per type (class + clone)
+  function labelPositions(m) {
+    const by = new Map(); let withGeo = 0;
+    for (const g of m.nodes(null, SKIP_AREA)) {
+      const lb = g.labelBox; if (!lb) continue;
+      withGeo++;
+      const k = g.cls + (g.clone ? " (clone)" : "") + (g.primary === false ? " (secondary)" : "");
+      const ox = (lb.x + lb.w / 2 - g.cx) / Math.max(g.w, 1), oy = (lb.y + lb.h / 2 - g.cy) / Math.max(g.h, 1);
+      if (!by.has(k)) by.set(k, []); by.get(k).push([ox, oy]);
+    }
+    let worst = 0;
+    for (const v of by.values()) if (v.length >= 2) worst = Math.max(worst, std(v.map((p) => p[0])), std(v.map((p) => p[1])));
+    const boxes = m.nodes(null, SKIP_AREA).filter((g) => g.labelBox && g.labelBox.w > 0 && g.labelBox.h > 0).map((g) => g.labelBox);
+    let ov = 0;
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      const ix = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), iy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      if (ix > 0 && iy > 0 && ix * iy > 0.15 * Math.min(a.w * a.h, b.w * b.h)) ov++;
+    }
+    return { labels_with_geometry: withGeo, label_types: by.size, label_offset_spread: withGeo ? r3(worst) : NaN, label_overlaps: ov };
+  }
+  // reproducible: the same drawing as a reference rendering (same nodes at the same places, same lines)
+  function sameLayout(m, ref) {
+    if (!ref) return null;
+    const near = (a, b) => Math.abs(a - b) < 1e-3;
+    let diff = 0;
+    for (const g of m.glyphs.values()) {
+      const h = ref.glyphs.get(g.id);
+      if (!h || !near(g.x, h.x) || !near(g.y, h.y) || !near(g.w, h.w) || !near(g.h, h.h)) diff++;
+    }
+    diff += Math.abs(ref.glyphs.size - m.glyphs.size);
+    const sig = (mm) => mm.arcs.map((a) => a.src + ">" + a.tgt + ":" + a.pts.map((p) => p.map((v) => v.toFixed(2)).join(",")).join(";")).sort().join("|");
+    return { nodes_differing: diff, lines_identical: sig(m) === sig(ref) };
   }
 
   function scoreModel(m, opts = {}) {
@@ -612,12 +764,19 @@
     row.density = W * H ? r4(area / (W * H)) : NaN;
     const ov = overlaps(m);
     row.node_overlaps = ov.n; extra.overlapIds = ov.ids;
+    const lt = linesThroughNodes(m); row.lines_through_nodes = lt.n; extra.throughPts = lt.pts;
+    Object.assign(row, labelPositions(m));
+    const same = sameLayout(m, opts.reference);
+    if (same) { row.reference_nodes_differing = same.nodes_differing; row.reference_lines_identical = same.lines_identical; }
     return { row, extra };
   }
 
   // ------------------------------------------------------------- rules -> scores
   const DEFAULT_THRESHOLDS = {
-    cycle: { pass: 0.8, fail: 0.5 },
+    reproducible: { pass: 0, fail: 1 },
+    labels: { pass: 0.02, fail: 0.2 },
+    cycle: { pass: 1, fail: 0.5 },
+    through: { pass: 0, fail: 5 },
     clones: { pass: 0, fail: 3 },
     crossings: { pass: 0.02, fail: 0.3 },
     placement: { pass: 0.8, fail: 0.5 },
@@ -640,13 +799,26 @@
   const fmt = (x, d = 2) => (Number.isNaN(x) || x === undefined ? "–" : Number(x).toFixed(d).replace(/\.?0+$/, "") || "0");
 
   const RULES = [
+    { id: "reproducible", kind: "hard", name: "Reproducible rendering",
+      eval(r, t) {
+        if (r.reference_nodes_differing === undefined) return { na: true, value: "–", detail: "Give a second rendering of the same map (opts.reference) to check it." };
+        const v = r.reference_nodes_differing + (r.reference_lines_identical ? 0 : 1);
+        return { v, s: lowBetter(v, t.pass, t.fail), value: v ? "differs" : "identical", unit: "",
+          detail: `${r.reference_nodes_differing} node(s) placed differently; lines ${r.reference_lines_identical ? "identical" : "differ"} from the reference rendering.` };
+      } },
+    { id: "labels", kind: "hard", name: "Labels at fixed positions per type",
+      eval(r, t) {
+        if (!r.labels_with_geometry) return { na: true, value: "–", detail: "This file has no label positions (SBML text glyphs, Escher label_x/label_y or SBGN label boxes)." };
+        const v = r.label_offset_spread + (r.label_overlaps ? t.fail : 0);
+        return { v, s: lowBetter(v, t.pass, t.fail), value: fmt(r.label_offset_spread, 3), unit: "spread",
+          detail: `${r.labels_with_geometry} labels in ${r.label_types} node types: the label's offset from its node varies by at most ${fmt(r.label_offset_spread * 100, 1)}% of the node size within a type; ${r.label_overlaps} overlapping labels. Pass ≤ ${t.pass * 100}%.` };
+      } },
     { id: "cycle", kind: "hard", name: "Cycles look like cycles",
       eval(r, t) {
-        if (!r.cycle_len) return { na: true, value: "no cycle", detail: "No cycle of 4 or more metabolites found. Name one under Settings to check it." };
-        if (Number.isNaN(r.cycle_circularity)) return { na: true, value: "–", detail: "The cycle's nodes lie on a line, so no circle can be fitted." };
-        const v = r.cycle_circularity * r.cycle_order_consistency;
-        return { v, s: highBetter(v, t.pass, t.fail), value: fmt(v), unit: "circle × order",
-          detail: `${r.cycle_len} metabolites, circle fit ${fmt(r.cycle_circularity)}, order ${fmt(r.cycle_order_consistency)} (${r.cycle_direction === "cw" ? "clockwise" : "counter-clockwise"}). Pass ≥ ${t.pass}.` };
+        if (!r.cycles_main) return { na: true, value: "no cycle", detail: "No cycle of 3 or more metabolites (main steps) found. Name one under Settings to check it." };
+        const v = r.cycle_closed_loop_share;
+        return { v, s: highBetter(v, t.pass, t.fail), value: `${r.cycles_closed_loop}/${r.cycles_main}`, unit: "closed loops",
+          detail: `${r.cycles_main} main cycle(s), ${r.cycles_closed_loop} drawn as a closed loop in cycle order (no self-crossing, winds once, no inward fold; circle, stadium or rounded rectangle). Longest: ${r.cycle_len} metabolites, ${r.cycle_direction === "cw" ? "clockwise" : "counter-clockwise"}; ${r.cycle_alternative_routes} alternative route(s) not judged.` };
       } },
     { id: "clones", kind: "hard", name: "Cofactors drawn as clones",
       eval(r, t) {
@@ -669,6 +841,13 @@
         const mod = Number.isNaN(r.modifier_perpendicular_share) ? "no modifiers" : `modifiers beside the reaction in ${pct(r.modifier_perpendicular_share)}`;
         return { v, s: highBetter(v, t.pass, t.fail), value: pct(v), unit: "opposite",
           detail: `Substrates and products on opposite sides (≥120°) in ${pct(v)} of ${r.reactions_scored} reactions; ${mod}; ${pct(r.flow_main_dir_share)} run ${r.flow_main_dir}.` };
+      } },
+    { id: "through", kind: "hard", name: "No line through a node",
+      eval(r, t) {
+        if (r.lines_through_nodes === undefined) return { na: true, value: "–", detail: "" };
+        const v = r.lines_through_nodes;
+        return { v, s: lowBetter(v, t.pass, t.fail), value: String(v), unit: v === 1 ? "line" : "lines",
+          detail: "Lines that pass through a node they do not connect (exact segment/box test; reaction points excluded)." };
       } },
     { id: "aspect", kind: "hard", name: "Aspect ratio",
       eval(r, t) {
@@ -722,14 +901,15 @@
       hardTotal: out.filter((r) => r.kind === "hard" && r.status !== "na").length };
   }
 
-  const COLUMNS = ["map", "format", "glyphs", "arcs", "processes", "metabolites", "cycle_len", "cycle_circularity",
-    "cycle_order_consistency", "cycle_direction", "cycle_members", "currency_glyphs", "currency_hub_violations",
+  const COLUMNS = ["map", "format", "glyphs", "arcs", "processes", "metabolites", "cycle_len", "cycles_main", "cycles_closed_loop",
+    "cycle_closed_loop_share", "cycle_alternative_routes", "cycle_circularity", "cycle_order_consistency", "cycle_direction", "cycle_members", "currency_glyphs", "currency_hub_violations",
     "currency_long_arc_share", "clone_markers", "duplicated_metabolite_labels", "edge_crossings", "crossings_per_arc",
     "reactions_scored", "inout_opposite_share", "modifier_perpendicular_share", "flow_main_dir", "flow_main_dir_share",
     "aspect_ratio", "edge_len_median", "edge_len_max_rel", "edge_len_cv", "bends_per_arc", "bent_arc_share",
-    "density", "node_overlaps"];
+    "density", "node_overlaps", "lines_through_nodes", "labels_with_geometry", "label_types", "label_offset_spread", "label_overlaps",
+    "reference_nodes_differing", "reference_lines_identical"];
 
-  const api = { parseText, parseSBGN, parseSBML, parseCellDesigner, parseEscher, scoreModel, evaluate, RULES, COLUMNS,
+  const api = { parseText, parseSBGN, parseSBML, parseCellDesigner, parseEscher, scoreModel, evaluate, RULES, COLUMNS, loopShape, simpleCycles,
     CURRENCY_DEFAULT, DEFAULT_THRESHOLDS, normName, MAX_SEGMENTS, PROCESS, METABOLITE, MODIFIER };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.LayoutScore = api;

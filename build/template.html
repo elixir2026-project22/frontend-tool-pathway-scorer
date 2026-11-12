@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pathway Layout Scorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: classic project site. Navbar, upload hero, results (overview table then detail), documentation sections, footer. Light theme only. */
+:root {
+  --nav: #0e3b43;
+  --primary: #12808a;
+  --primary-dark: #0d636b;
+  --primary-tint: #e6f3f4;
+  --text: #1f2a33;
+  --muted: #5f6b76;
+  --border: #dfe4e8;
+  --page: #f4f6f8;
+  --white: #ffffff;
+  --good: #2b8a3e; --good-bg: #e6f4ea;
+  --warn: #b26a00; --warn-bg: #fff3dc;
+  --bad: #c92a2a; --bad-bg: #fdeaea;
+  --na: #868e96;
+  --font: "Source Sans 3", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--white); color: var(--text); font: 16px/1.55 var(--font); }
+a { color: var(--primary); }
+h1, h2, h3 { line-height: 1.2; text-wrap: balance; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid rgba(18, 128, 138, .45); outline-offset: 2px; }
+.container { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* navbar */
+.navbar { background: var(--nav); color: #fff; }
+.navbar .container { display: flex; align-items: center; gap: 24px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font-weight: 700; font-size: 18px; }
+.navbar nav { margin-left: auto; display: flex; gap: 22px; flex-wrap: wrap; }
+.navbar nav a { color: rgba(255, 255, 255, .85); text-decoration: none; font-size: 15px; }
+.navbar nav a:hover { color: #fff; text-decoration: underline; }
+
+/* hero */
+.hero { background: var(--page); border-bottom: 1px solid var(--border); padding: 44px 0 40px; }
+.hero .container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 520px); gap: 40px; align-items: center; }
+.hero h1 { font-size: 36px; margin: 0 0 12px; }
+.hero p.lead { font-size: 18px; color: var(--muted); margin: 0 0 18px; max-width: 34em; }
+.hero ul { margin: 0; padding-left: 20px; color: var(--muted); }
+.upload { background: var(--white); border: 2px dashed #b6c2cb; border-radius: 10px; padding: 30px 24px; text-align: center; transition: border-color .15s, background .15s; }
+.upload.over { border-color: var(--primary); background: var(--primary-tint); }
+.upload h2 { font-size: 20px; margin: 10px 0 6px; }
+.upload p { margin: 0 0 16px; color: var(--muted); font-size: 15px; }
+.upload small { display: block; margin-top: 14px; color: var(--muted); font-size: 13px; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--white); padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 15px; color: var(--text); text-decoration: none; }
+.btn:hover { background: var(--page); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn.primary:hover { background: var(--primary-dark); }
+.btn.small { padding: 5px 12px; font-size: 14px; }
+.btn[hidden] { display: none; }
+
+/* sections */
+section.block { padding: 40px 0; }
+section.block + section.block { border-top: 1px solid var(--border); }
+section.block h2.title { font-size: 28px; margin: 0 0 6px; }
+section.block p.intro { color: var(--muted); margin: 0 0 22px; max-width: 46em; }
+.alert { background: var(--primary-tint); border: 1px solid #bfe0e2; color: #0b4f55; padding: 10px 14px; border-radius: 6px; font-size: 15px; margin-bottom: 18px; }
+.card { background: var(--white); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
+.card-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.card-head h3 { margin: 0; font-size: 18px; }
+.card-head .tools { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.card-body { padding: 18px; }
+
+/* tables */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { padding: 10px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+thead th { background: var(--page); font-weight: 600; font-size: 14px; color: var(--muted); white-space: nowrap; }
+thead th button { background: none; border: 0; padding: 0; font-weight: 600; color: inherit; }
+thead th button:hover { color: var(--primary); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.c, th.c { text-align: center; }
+tbody tr:last-child td { border-bottom: 0; }
+#overview tbody tr { cursor: pointer; }
+#overview tbody tr:hover { background: #f8fafb; }
+#overview tbody tr.sel { background: var(--primary-tint); }
+#overview tbody tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+.err-row td { color: var(--bad); cursor: default; }
+.fname { font-weight: 600; overflow-wrap: anywhere; }
+#overview td:first-child { min-width: 220px; }
+.sub { color: var(--muted); font-size: 13px; }
+
+.badge { display: inline-block; font-size: 13px; font-weight: 600; padding: 2px 9px; border-radius: 4px; white-space: nowrap; }
+.badge.good { background: var(--good-bg); color: var(--good); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.bad { background: var(--bad-bg); color: var(--bad); }
+.badge.na { background: var(--page); color: var(--na); }
+.badge.example { background: #eef1f4; color: var(--muted); font-weight: 600; margin-left: 6px; }
+.score { font-weight: 700; font-variant-numeric: tabular-nums; }
+.score.good { color: var(--good); } .score.warn { color: var(--warn); } .score.bad { color: var(--bad); } .score.na { color: var(--na); }
+
+/* detail */
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; margin-top: 20px; align-items: start; }
+.detail > * { min-width: 0; }
+.summary { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; padding: 18px; border-bottom: 1px solid var(--border); }
+.ring { flex: none; }
+.summary > div { min-width: 0; flex: 1 1 200px; }
+.summary h3 { margin: 0 0 4px; font-size: 20px; overflow-wrap: anywhere; }
+.summary p { margin: 0; color: var(--muted); font-size: 15px; }
+.rules td:first-child { width: 52%; }
+.rules .rname { font-weight: 600; }
+.rules .rdetail { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+.rules tr.group td { background: var(--page); font-weight: 700; font-size: 14px; padding: 8px 14px; }
+.note { padding: 12px 18px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); }
+
+.viewer .card-head { gap: 8px 14px; }
+.viewer label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.viewer label input { accent-color: var(--primary); margin: 0; }
+.swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+svg.map { display: block; width: 100%; height: 560px; touch-action: none; cursor: grab; background: #fcfdfd; }
+svg.map.drag { cursor: grabbing; }
+svg.map text { font-family: var(--font); fill: var(--text); pointer-events: none; }
+
+details.measure { margin-top: 20px; }
+details.measure summary { cursor: pointer; font-weight: 600; padding: 14px 18px; }
+details.measure[open] summary { border-bottom: 1px solid var(--border); }
+.kv { columns: 3 260px; column-gap: 32px; padding: 14px 18px; font-size: 14px; }
+.kv div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid #eef1f3; break-inside: avoid; }
+.kv span:first-child { color: var(--muted); }
+.kv span:last-child { text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+details.csv summary { cursor: pointer; color: var(--primary); font-size: 14px; padding: 10px 18px; }
+details.csv textarea { display: block; width: calc(100% - 36px); margin: 0 18px 18px; min-height: 120px; font: 13px ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+
+/* docs */
+.docs table td:first-child { font-weight: 600; white-space: nowrap; }
+.formats { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.formats .card { padding: 18px; }
+.formats h3 { margin: 0 0 6px; font-size: 17px; }
+.formats p { margin: 0; color: var(--muted); font-size: 15px; }
+.about > * { max-width: 46em; }
+.about p { margin: 0 0 12px; }
+
+footer { background: var(--page); border-top: 1px solid var(--border); padding: 26px 0; color: var(--muted); font-size: 14px; }
+footer .container { display: flex; gap: 12px 30px; flex-wrap: wrap; justify-content: space-between; }
+
+/* modal */
+.modal { position: fixed; inset: 0; background: rgba(15, 23, 30, .5); display: none; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow: auto; z-index: 10; }
+.modal.open { display: flex; }
+.dialog { background: var(--white); border-radius: 10px; width: min(720px, 100%); box-shadow: 0 20px 50px rgba(0, 0, 0, .25); }
+.dialog .card-body { display: grid; gap: 18px; }
+.dialog h4 { margin: 0 0 4px; font-size: 16px; }
+.dialog p.help { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.dialog textarea, .dialog input[type="text"], .dialog input[type="number"] { width: 100%; border: 1px solid #c9d1d8; border-radius: 6px; padding: 7px 10px; background: #fff; }
+.dialog textarea { min-height: 84px; font-size: 14px; }
+.thr { display: grid; grid-template-columns: minmax(170px, 1fr) repeat(4, 80px); gap: 6px 10px; align-items: center; font-size: 15px; }
+.thr .h { font-size: 13px; font-weight: 600; color: var(--muted); }
+.thr input { padding: 5px 8px !important; }
+.dialog .foot { display: flex; gap: 8px; justify-content: flex-end; padding: 14px 18px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.close { margin-left: auto; background: none; border: 0; font-size: 24px; line-height: 1; color: var(--muted); }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; padding: 9px 16px; border-radius: 6px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+.toast.show { opacity: 1; }
+
+@media (max-width: 980px) {
+  .hero .container, .detail { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 30px; }
+}
+@media (max-width: 600px) {
+  .container { padding: 0 16px; }
+  .navbar nav { display: none; }
+  .thr { grid-template-columns: 1fr 1fr; }
+  svg.map { height: 420px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<header class="navbar">
+  <div class="container">
+    <a class="brand" href="#top">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><g fill="none" stroke="#7fd1d8" stroke-width="2"><path d="M7 7 L14 14 L21 7 M14 14 L14 22"/></g><circle cx="7" cy="7" r="3.5" fill="#fff"/><circle cx="21" cy="7" r="3.5" fill="#fff"/><circle cx="14" cy="22" r="3.5" fill="#fff"/><rect x="11.5" y="11.5" width="5" height="5" fill="#7fd1d8"/></svg>
+      Pathway Layout Scorer
+    </a>
+    <nav aria-label="Main">
+      <a href="#results">Results</a>
+      <a href="#rules">Scoring rules</a>
+      <a href="#formats">File formats</a>
+      <a href="#about">About</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero" id="top">
+  <div class="container">
+    <div>
+      <h1>Check how well a metabolic pathway map is laid out</h1>
+      <p class="lead">Upload one or more pathway maps and get a score for each layout rule: cycles drawn as cycles, cofactors drawn as clones, no crossing lines, consistent placement of substrates and products, and more.</p>
+      <ul>
+        <li>Compare hand-drawn reference maps with the output of layout tools</li>
+        <li>See exactly where a map breaks a rule</li>
+        <li>Export all measurements as CSV</li>
+      </ul>
+    </div>
+    <label class="upload" id="drop" for="file-input">
+      <svg width="44" height="44" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="var(--primary)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      <h2>Drag and drop map files here</h2>
+      <p>SBGN-ML, SBML (Layout extension or CellDesigner) and Escher JSON</p>
+      <span class="btn primary">Browse files</span>
+      <input id="file-input" type="file" multiple hidden>
+      <small>Any file extension works: the format is detected from the content. Files are processed in your browser and are not uploaded anywhere.</small>
+    </label>
+  </div>
+</div>
+
+<main>
+  <section class="block" id="results">
+    <div class="container">
+      <h2 class="title">Results</h2>
+      <p class="intro">Each map gets a score from 0 to 100 per rule and an overall score. Select a row to see the rule-by-rule breakdown and where problems are on the map.</p>
+      <div class="alert" id="example-note">You are looking at two example maps from the Metabolism Regulation gallery. Add your own files above and they will replace the examples.</div>
+      <div class="card">
+        <div class="card-head">
+          <h3>Your maps</h3>
+          <span class="sub" id="count"></span>
+          <div class="tools">
+            <button class="btn small" id="btn-settings" type="button">Scoring settings</button>
+            <button class="btn small" id="btn-copy" type="button">Copy CSV</button>
+            <button class="btn small primary" id="btn-download" type="button" hidden>Download CSV</button>
+            <button class="btn small" id="btn-clear" type="button">Clear</button>
+          </div>
+        </div>
+        <div class="table-wrap" id="overview"></div>
+        <details class="csv"><summary>Show CSV text</summary><textarea id="csvout" readonly aria-label="CSV of all measurements and scores"></textarea></details>
+      </div>
+      <div id="detail"></div>
+    </div>
+  </section>
+
+  <section class="block docs" id="rules">
+    <div class="container">
+      <h2 class="title">Scoring rules</h2>
+      <p class="intro">Each rule is measured from the node and line coordinates in the file. A rule scores 100 at its pass threshold and 0 at its fail threshold, with a linear scale in between. Required rules count twice in the overall score, recommended rules once. All thresholds and weights can be changed under <em>Scoring settings</em>.</p>
+      <div class="card table-wrap" id="rules-table"></div>
+      <p class="intro" style="margin-top:18px">Reproducibility, fixed node positions, versioning and interoperable output depend on the layout tool rather than on a single map, so they are not scored here. Check them by running a tool twice on the same input and comparing the two results.</p>
+    </div>
+  </section>
+
+  <section class="block" id="formats">
+    <div class="container">
+      <h2 class="title">Supported file formats</h2>
+      <p class="intro">The format is recognised from the file content, so the extension does not matter (.sbgn, .xml, .sbml, .json or none).</p>
+      <div class="formats">
+        <div class="card"><h3>SBGN-ML</h3><p>Process Description maps, versions 0.2 and 0.3. Glyph boxes, arcs with bend points and clone markers are all read.</p></div>
+        <div class="card"><h3>SBML with Layout</h3><p>SBML Level 3 with the Layout package, or Level 2 with the layout annotation. Line curves are read; species drawn more than once count as cloned.</p></div>
+        <div class="card"><h3>SBML from CellDesigner</h3><p>SBML Level 2 with CellDesigner annotations. Node positions are read; lines are treated as straight, so bends are not counted.</p></div>
+        <div class="card"><h3>Escher JSON</h3><p>Escher map files. Metabolite and reaction marker positions and curved segments are read; reaction direction comes from the stoichiometry.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="about">
+    <div class="container about">
+      <h2 class="title">About</h2>
+      <p>This scorer was developed during the BioHackathon 2026 project on the evaluation and automation of metabolic pathway map layouts. The group defined a set of hard and soft layout rules for readable metabolic maps; this page turns each rule into a measurement so that hand-drawn reference maps and automatic layouts can be compared on equal terms.</p>
+      <p>The measurements are the same as those of the project's Python script <code>score_rules.py</code>, so results from both can be combined. The cofactor list and the thresholds are first proposals and are expected to change as the group tunes them.</p>
+      <p>The example maps come from the <a href="https://metabolismregulation.github.io/gallery/">Metabolism Regulation gallery</a> and are available under CC0.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="container">
+    <span>Pathway Layout Scorer · BioHackathon 2026, metabolic pathway map layout project</span>
+    <span>Files are processed locally in your browser.</span>
+  </div>
+</footer>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="set-title">
+  <div class="dialog">
+    <div class="card-head"><h3 id="set-title">Scoring settings</h3><button class="close" type="button" id="set-x" aria-label="Close">×</button></div>
+    <div class="card-body">
+      <div>
+        <h4><label for="set-cycle">Cycle to check</label></h4>
+        <p class="help">Metabolite names separated by commas, for example the TCA cycle. Leave empty to use the largest cycle of four or more metabolites found in the map.</p>
+        <input type="text" id="set-cycle" placeholder="citrate, isocitrate, 2-oxoglutarate, succinyl-CoA, succinate, fumarate, malate, oxaloacetate">
+      </div>
+      <div>
+        <h4><label for="set-currency">Cofactor metabolites</label></h4>
+        <p class="help">Names separated by commas or line breaks, not case-sensitive. These count as cofactors for the clone rule and are left out when looking for cycles.</p>
+        <textarea id="set-currency"></textarea>
+      </div>
+      <div>
+        <h4>Thresholds</h4>
+        <p class="help">For aspect ratio and density, the first two columns are the target range and the last two are where the score reaches 0.</p>
+        <div class="thr" id="thr"></div>
+      </div>
+      <div class="thr" style="grid-template-columns: minmax(170px,1fr) 80px 80px">
+        <span class="h">Overall score</span><span class="h">Required</span><span class="h">Recommended</span>
+        <span>Weight per rule</span>
+        <input type="number" step="0.5" min="0" id="w-hard" aria-label="Weight of required rules">
+        <input type="number" step="0.5" min="0" id="w-soft" aria-label="Weight of recommended rules">
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn" type="button" id="set-reset">Reset to defaults</button>
+      <button class="btn" type="button" id="set-cancel">Cancel</button>
+      <button class="btn primary" type="button" id="set-apply">Apply</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+__CORE__
+</script>
+<script>
+const EXAMPLES = __EXAMPLES__;
+</script>
+<script>
+(function () {
+  "use strict";
+  const L = window.LayoutScore;
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const KIND = { hard: "Required", soft: "Recommended" };
+  const RESULT = { pass: ["good", "Passed"], check: ["warn", "Review"], fail: ["bad", "Failed"], na: ["na", "Not applicable"] };
+  const RLEVEL = { pass: "good", check: "warn", fail: "bad", na: "na" };
+  const level = (s) => (s === null || s === undefined ? "na" : s >= 85 ? "good" : s >= 60 ? "warn" : "bad");
+
+  // ---------------------------------------------------------------- settings
+  const STORE = "layout-scorer-settings-v1";
+  const defaults = () => ({ cycle: "", currency: L.CURRENCY_DEFAULT.join(", "), th: clone(L.DEFAULT_THRESHOLDS) });
+  let settings = defaults();
+  try { const s = JSON.parse(localStorage.getItem(STORE) || "null"); if (s && s.th) settings = { ...defaults(), ...s, th: { ...defaults().th, ...s.th } }; } catch (e) { /* storage unavailable */ }
+  const saveSettings = () => { try { localStorage.setItem(STORE, JSON.stringify(settings)); } catch (e) { /* ignore */ } };
+  const splitList = (s) => s.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
+  const scoreOpts = () => ({ cycle: splitList(settings.cycle), currency: splitList(settings.currency) });
+
+  // ---------------------------------------------------------------- state
+  let items = [], current = 0, sortKey = null, sortDir = -1;
+  const layers = { crossings: true, hubs: true, cycle: true, overlaps: true, labels: true };
+
+  function scoreItem(it) {
+    if (!it.model) return;
+    try { const { row, extra } = L.scoreModel(it.model, scoreOpts()); it.row = row; it.extra = extra; it.ev = L.evaluate(row, settings.th); it.error = null; }
+    catch (e) { it.error = "Could not score this map: " + e.message; }
+  }
+  function addText(name, text, example) {
+    const it = { name, example };
+    try { it.model = L.parseText(text, name); scoreItem(it); } catch (e) { it.error = cap(e.message) + "."; }
+    return it;
+  }
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  async function addFiles(fileList) {
+    const files = [...fileList];
+    if (!files.length) return;
+    if (items.some((i) => i.example)) { items = items.filter((i) => !i.example); $("#example-note").hidden = true; }
+    const first = items.length;
+    for (const f of files) {
+      let text;
+      try { text = await f.text(); } catch (e) { items.push({ name: f.name, error: "The file could not be read." }); continue; }
+      const it = addText(f.name, text, false);
+      const ix = items.findIndex((i) => i.name === f.name);
+      if (ix >= 0) items[ix] = it; else items.push(it);
+    }
+    current = Math.min(first, items.length - 1);
+    const firstOk = items.findIndex((i, k) => k >= first && i.ev);
+    if (firstOk >= 0) current = firstOk;
+    render();
+    $("#results").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+  const drop = $("#drop");
+  let depth = 0;
+  document.addEventListener("dragenter", (e) => { e.preventDefault(); depth++; drop.classList.add("over"); });
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("dragleave", () => { depth = Math.max(0, depth - 1); if (!depth) drop.classList.remove("over"); });
+  document.addEventListener("drop", (e) => { e.preventDefault(); depth = 0; drop.classList.remove("over"); if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+  $("#file-input").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+  $("#btn-clear").addEventListener("click", () => { items = []; current = 0; $("#example-note").hidden = true; render(); });
+
+  // ---------------------------------------------------------------- overview table
+  function renderOverview() {
+    const rows = items.map((it, i) => ({ it, i }));
+    const val = (x, k) => !x.it.ev ? -2 : k === "name" ? x.it.name.toLowerCase() : k === "overall" ? x.it.ev.overall ?? -1 : (x.it.ev.rules.find((r) => r.id === k).score ?? -1);
+    if (sortKey) rows.sort((a, b) => { const va = val(a, sortKey), vb = val(b, sortKey); return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir; });
+    const arrow = (k) => (sortKey === k ? (sortDir < 0 ? " ▾" : " ▴") : "");
+    $("#count").textContent = items.length ? `${items.length} file${items.length > 1 ? "s" : ""}` : "";
+    if (!items.length) { $("#overview").innerHTML = `<p class="card-body sub" style="margin:0">No maps yet. Drop files in the box at the top of the page.</p>`; return; }
+    $("#overview").innerHTML = `<table>
+      <thead><tr><th><button type="button" data-k="name">File${arrow("name")}</button></th><th>Format</th><th class="num">Reactions</th>
+        <th class="c"><button type="button" data-k="overall">Overall${arrow("overall")}</button></th>
+        ${L.RULES.map((r) => `<th class="c" title="${KIND[r.kind]} rule"><button type="button" data-k="${r.id}">${esc(short(r))}${arrow(r.id)}</button></th>`).join("")}</tr></thead>
+      <tbody>${rows.map(({ it, i }) => it.ev ? `<tr data-i="${i}" class="${i === current ? "sel" : ""}" tabindex="0" aria-selected="${i === current}">
+          <td><span class="fname">${esc(it.name)}</span>${it.example ? '<span class="badge example">Example</span>' : ""}</td>
+          <td>${esc(it.row.format)}</td><td class="num">${it.row.processes}</td>
+          <td class="c"><span class="score ${level(it.ev.overall)}">${it.ev.overall ?? "–"}</span></td>
+          ${it.ev.rules.map((r) => `<td class="c"><span class="score ${RLEVEL[r.status]}" title="${esc(r.name + ": " + r.value + " " + (r.unit || ""))}">${r.score ?? "–"}</span></td>`).join("")}</tr>`
+        : `<tr class="err-row"><td><span class="fname">${esc(it.name)}</span></td><td colspan="${L.RULES.length + 3}">${esc(it.error || "Could not be scored.")}</td></tr>`).join("")}
+      </tbody></table>`;
+    $("#overview").querySelectorAll("th button").forEach((b) => b.addEventListener("click", () => {
+      const k = b.dataset.k; if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = k === "name" ? 1 : -1; } renderOverview();
+    }));
+    $("#overview").querySelectorAll("tbody tr[data-i]").forEach((tr) => {
+      const go = () => { current = +tr.dataset.i; render(); document.getElementById("detail").scrollIntoView({ block: "nearest" }); };
+      tr.addEventListener("click", go);
+      tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+    });
+  }
+  const SHORT = { cycle: "Cycles", clones: "Cofactor clones", crossings: "Crossings", placement: "Placement", aspect: "Aspect ratio", longlines: "Long lines", bends: "Bends", density: "Density", overlaps: "Overlaps" };
+  const short = (r) => SHORT[r.id] || r.name;
+
+  // ---------------------------------------------------------------- detail
+  function ring(score) {
+    const r = 30, c = 2 * Math.PI * r, f = score === null ? 0 : score / 100;
+    const col = { good: "var(--good)", warn: "var(--warn)", bad: "var(--bad)", na: "var(--na)" }[level(score)];
+    return `<svg class="ring" width="84" height="84" viewBox="0 0 84 84" role="img" aria-label="Overall score ${score ?? "not available"} out of 100">
+      <circle cx="42" cy="42" r="${r}" fill="none" stroke="#e9edf0" stroke-width="9"/>
+      <circle cx="42" cy="42" r="${r}" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${c * f} ${c}" transform="rotate(-90 42 42)"/>
+      <text x="42" y="47" text-anchor="middle" font-size="21" font-weight="700" fill="var(--text)" font-family="var(--font)">${score ?? "–"}</text></svg>`;
+  }
+  function ruleRow(r) {
+    const [cls, txt] = RESULT[r.status];
+    return `<tr><td><div class="rname">${esc(r.name)}</div><div class="rdetail">${esc(r.detail)}</div></td>
+      <td class="num">${esc(r.value)}<div class="sub">${esc(r.unit || "")}</div></td>
+      <td class="num"><span class="score ${RLEVEL[r.status]}">${r.score ?? "–"}</span></td>
+      <td><span class="badge ${cls}">${txt}</span></td></tr>`;
+  }
+  function renderDetail() {
+    const host = $("#detail");
+    const it = items[current];
+    if (!it || !it.ev) { host.innerHTML = ""; return; }
+    const r = it.row, ev = it.ev;
+    const hard = ev.rules.filter((x) => x.kind === "hard"), soft = ev.rules.filter((x) => x.kind === "soft");
+    const softPass = soft.filter((x) => x.status === "pass").length, softTotal = soft.filter((x) => x.status !== "na").length;
+    host.innerHTML = `
+      <div class="detail">
+        <div class="card">
+          <div class="summary">${ring(ev.overall)}
+            <div><h3>${esc(it.name)}</h3>
+              <p>${ev.hardPass} of ${ev.hardTotal} required rules passed, ${softPass} of ${softTotal} recommended rules passed.</p>
+              <p class="sub">${esc(r.format)} · ${r.processes} reactions · ${r.metabolites} metabolites · ${r.arcs} lines</p></div></div>
+          <div class="table-wrap"><table class="rules">
+            <thead><tr><th>Rule</th><th class="num">Measured</th><th class="num">Score</th><th>Result</th></tr></thead>
+            <tbody><tr class="group"><td colspan="4">Required rules</td></tr>${hard.map(ruleRow).join("")}
+              <tr class="group"><td colspan="4">Recommended rules</td></tr>${soft.map(ruleRow).join("")}</tbody></table></div>
+          ${it.model.note ? `<div class="note">${esc(it.model.note)}</div>` : ""}
+        </div>
+        <div class="card viewer">
+          <div class="card-head">
+            <h3>Map</h3>
+            ${toggle("crossings", "Crossings", "var(--bad)", it.extra.crossPts.length)}
+            ${toggle("hubs", "Cofactor hubs", "var(--warn)", it.extra.hubIds.size)}
+            ${toggle("cycle", "Cycle", "var(--primary)", it.extra.cycle ? it.extra.cycle.ids.length : 0)}
+            ${toggle("overlaps", "Overlaps", "#e8590c", it.row.node_overlaps)}
+            ${toggle("labels", "Labels")}
+            <div class="tools"><button class="btn small" type="button" id="fit">Reset view</button></div>
+          </div>
+          <svg class="map" id="svg" role="img" aria-label="Map of ${esc(it.name)}"></svg>
+          <div class="note">Scroll to zoom and drag to move. Hover over a node to see its name.</div>
+        </div>
+      </div>
+      <details class="card measure"><summary>All measurements for ${esc(it.name)}</summary>
+        <div class="kv">${L.COLUMNS.filter((c) => c !== "map").map((c) => `<div><span>${c}</span><span>${esc(fmtCell(r[c]))}</span></div>`).join("")}</div>
+      </details>`;
+    host.querySelectorAll(".viewer input").forEach((cb) => cb.addEventListener("change", () => { layers[cb.dataset.l] = cb.checked; drawSVG(it, false); }));
+    $("#fit").addEventListener("click", () => drawSVG(it, true));
+    drawSVG(it, true);
+  }
+  function toggle(key, label, color, n) {
+    return `<label><input type="checkbox" data-l="${key}" ${layers[key] ? "checked" : ""}>${color ? `<span class="swatch" style="background:${color}"></span>` : ""}${label}${n === undefined ? "" : ` (${n})`}</label>`;
+  }
+  const fmtCell = (v) => (v === undefined || v === null || (typeof v === "number" && Number.isNaN(v)) ? "" : v);
+
+  // ---------------------------------------------------------------- map drawing
+  let vb = null;
+  function drawSVG(it, fit) {
+    const svg = $("#svg"); if (!svg) return;
+    const m = it.model, ex = it.extra, b = ex.bbox;
+    if (!b) return;
+    const nodes = [...m.glyphs.values()];
+    const sizes = nodes.filter((g) => g.cls !== "compartment").map((g) => Math.max(g.w, g.h)).sort((a, c) => a - c);
+    const ns = sizes[Math.floor(sizes.length / 2)] || 20;
+    if (fit || !vb) { const pad = ns * 0.8; vb = { x: b.x0 - pad, y: b.y0 - pad, w: b.x1 - b.x0 + 2 * pad, h: b.y1 - b.y0 + 2 * pad }; }
+    const P = [], sw = `vector-effect="non-scaling-stroke"`;
+    for (const g of nodes.filter((g) => g.cls === "compartment" || g.cls === "submap"))
+      P.push(`<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="${Math.min(g.w, g.h) * 0.06}" fill="#f3f7f8" stroke="#c5d0d6" stroke-width="2" ${sw}/>`);
+    for (const a of m.arcs) {
+      const mod = L.MODIFIER.has(a.cls);
+      P.push(`<polyline points="${a.pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="#8e9aa4" stroke-width="1.2" ${mod ? 'stroke-dasharray="4 3"' : ""} ${sw}/>`);
+    }
+    if (layers.cycle && ex.cycle) { const c = ex.cycle.circle; P.push(`<circle cx="${c.cx}" cy="${c.cy}" r="${c.r}" fill="none" stroke="var(--primary)" stroke-width="1.6" stroke-dasharray="6 5" ${sw}/>`); }
+    const cyc = layers.cycle && ex.cycle ? new Set(ex.cycle.ids) : new Set();
+    for (const g of nodes) {
+      if (g.cls === "compartment" || g.cls === "submap") continue;
+      const chem = L.METABOLITE.has(g.cls), proc = L.PROCESS.has(g.cls);
+      let fill = proc ? "#fff" : chem ? "#eaf4f5" : g.cls === "complex" ? "#f7f8fa" : "#fff", stroke = "#7b8794", w = 1, dash = "";
+      if (cyc.has(g.id)) { fill = "#cfeaec"; stroke = "var(--primary)"; w = 2; }
+      if (layers.overlaps && ex.overlapIds.has(g.id)) { stroke = "#e8590c"; w = 2; dash = `stroke-dasharray="3 2"`; }
+      if (layers.hubs && ex.hubIds.has(g.id)) { stroke = "var(--warn)"; w = 3; dash = ""; }
+      const rx = chem ? Math.min(g.w, g.h) / 2 : proc ? 0 : Math.min(g.w, g.h) * 0.18;
+      P.push(`<g><title>${esc(g.label || g.id)} (${esc(g.cls)})${g.clone ? ", drawn more than once" : ""}</title><rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="${w}" ${dash} ${sw}/></g>`);
+    }
+    if (layers.labels) {
+      const fs = Math.max(ns * 0.26, 5);
+      for (const g of nodes) {
+        if (!g.label || L.PROCESS.has(g.cls) || g.cls === "compartment" || g.cls === "submap" || g.cls === "complex") continue;
+        const t = g.label.length > 18 ? g.label.slice(0, 17) + "…" : g.label;
+        P.push(`<text x="${g.cx}" y="${g.cy}" font-size="${fs}" text-anchor="middle" dominant-baseline="central">${esc(t)}</text>`);
+      }
+    }
+    if (layers.crossings) { const r = ns * 0.16; for (const p of ex.crossPts) P.push(`<circle cx="${p[0]}" cy="${p[1]}" r="${r}" fill="var(--bad)" fill-opacity=".25" stroke="var(--bad)" stroke-width="1.5" ${sw}/>`); }
+    svg.innerHTML = P.join("");
+    setVB(svg);
+  }
+  const setVB = (svg) => svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  function svgPoint(svg, e) {
+    const r = svg.getBoundingClientRect(), s = Math.max(vb.w / r.width, vb.h / r.height);
+    const ox = (r.width * s - vb.w) / 2, oy = (r.height * s - vb.h) / 2;
+    return [vb.x - ox + (e.clientX - r.left) * s, vb.y - oy + (e.clientY - r.top) * s, s];
+  }
+  document.addEventListener("wheel", (e) => {
+    const svg = e.target.closest && e.target.closest("#svg"); if (!svg || !vb) return;
+    e.preventDefault();
+    const [px, py] = svgPoint(svg, e), k = Math.exp(e.deltaY * 0.0015);
+    vb = { x: px - (px - vb.x) * k, y: py - (py - vb.y) * k, w: vb.w * k, h: vb.h * k }; setVB(svg);
+  }, { passive: false });
+  let dragFrom = null;
+  document.addEventListener("pointerdown", (e) => {
+    const svg = e.target.closest && e.target.closest("#svg"); if (!svg || !vb) return;
+    dragFrom = { x: e.clientX, y: e.clientY, vb: { ...vb }, s: svgPoint(svg, e)[2] };
+    svg.classList.add("drag"); svg.setPointerCapture(e.pointerId);
+  });
+  document.addEventListener("pointermove", (e) => {
+    if (!dragFrom) return; const svg = $("#svg"); if (!svg) return;
+    vb = { ...dragFrom.vb, x: dragFrom.vb.x - (e.clientX - dragFrom.x) * dragFrom.s, y: dragFrom.vb.y - (e.clientY - dragFrom.y) * dragFrom.s }; setVB(svg);
+  });
+  document.addEventListener("pointerup", () => { dragFrom = null; const s = $("#svg"); if (s) s.classList.remove("drag"); });
+
+  // ---------------------------------------------------------------- rules documentation
+  function renderRulesDoc() {
+    const t = settings.th;
+    const thr = {
+      cycle: `Pass ≥ ${t.cycle.pass}, fail ≤ ${t.cycle.fail}`, clones: `Pass ≤ ${t.clones.pass}, fail ≥ ${t.clones.fail}`,
+      crossings: `Pass ≤ ${t.crossings.pass}, fail ≥ ${t.crossings.fail} per line`, placement: `Pass ≥ ${t.placement.pass * 100}%, fail ≤ ${t.placement.fail * 100}%`,
+      aspect: `Pass ${t.aspect.lo}–${t.aspect.hi}, fail below ${t.aspect.flo} or above ${t.aspect.fhi}`, longlines: `Pass ≤ ${t.longlines.pass}×, fail ≥ ${t.longlines.fail}×`,
+      bends: `Pass ≤ ${t.bends.pass}, fail ≥ ${t.bends.fail}`, density: `Pass ${t.density.lo * 100}–${t.density.hi * 100}%, fail below ${t.density.flo * 100}% or above ${t.density.fhi * 100}%`,
+      overlaps: `Pass ≤ ${t.overlaps.pass}, fail ≥ ${t.overlaps.fail}`,
+    };
+    const what = {
+      cycle: "A circle is fitted through the metabolites of the largest cycle (or the one you name). Score is the circle fit (1 = perfect circle) times the share of steps going round in one direction.",
+      clones: "Number of cofactors such as ATP, NADH or H₂O that are drawn once and connected to more than one reaction instead of being drawn as separate copies.",
+      crossings: "Number of places where two lines cross, divided by the number of lines. Lines that share a node are not counted against each other.",
+      placement: "Share of reactions whose substrates and products sit on opposite sides of the reaction node (at least 120° apart).",
+      aspect: "Width divided by height of the whole drawing.",
+      longlines: "Length of the longest line divided by the median line length.",
+      bends: "Average number of bend points per line.",
+      density: "Total node area divided by the area of the drawing's bounding box.",
+      overlaps: "Number of node pairs whose boxes overlap. Compartments and members drawn inside a complex are excluded.",
+    };
+    $("#rules-table").innerHTML = `<table><thead><tr><th>Rule</th><th>Type</th><th>What is measured</th><th>Default thresholds</th></tr></thead><tbody>
+      ${L.RULES.map((r) => `<tr><td>${esc(r.name)}</td><td>${KIND[r.kind]}</td><td>${esc(what[r.id])}</td><td>${esc(thr[r.id])}</td></tr>`).join("")}</tbody></table>`;
+  }
+
+  // ---------------------------------------------------------------- CSV
+  function csv() {
+    const head = [...L.COLUMNS, "score_overall", ...L.RULES.map((r) => "score_" + r.id)];
+    const q = (v) => { v = String(fmtCell(v)); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const lines = [head.join(",")];
+    for (const it of items) {
+      if (!it.row) { lines.push([q(it.name), ...head.slice(1).map(() => "")].join(",")); continue; }
+      lines.push([...L.COLUMNS.map((c) => it.row[c]), it.ev.overall, ...it.ev.rules.map((r) => r.score)].map(q).join(","));
+    }
+    return lines.join("\n") + "\n";
+  }
+  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2400); }
+  $("#btn-copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(csv()); toast("CSV copied to the clipboard."); }
+    catch (e) { const d = document.querySelector("details.csv"); d.open = true; const ta = $("#csvout"); ta.focus(); ta.select(); toast("Copying was blocked. The CSV text is selected below."); }
+  });
+  let downloads = null;
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then((d) => { downloads = d; if (d) $("#btn-download").hidden = false; }).catch(() => {});
+  }
+  $("#btn-download").addEventListener("click", async () => {
+    if (!downloads) return;
+    try { await downloads.save({ filename: "layout_scores.csv", data: csv() }); } catch (e) { toast("The download was not saved. Use Copy CSV instead."); }
+  });
+
+  // ---------------------------------------------------------------- settings dialog
+  const THR_ROWS = [
+    ["cycle", "Cycle shape (circle × order)", "high"], ["clones", "Cofactor hubs (count)", "low"], ["crossings", "Crossings per line", "low"],
+    ["placement", "Opposite substrates and products (share)", "high"], ["aspect", "Aspect ratio", "band"], ["longlines", "Longest line ÷ median", "low"],
+    ["bends", "Bends per line", "low"], ["density", "Density (share of drawing)", "band"], ["overlaps", "Overlapping node pairs", "low"],
+  ];
+  function fillSettings() {
+    $("#set-cycle").value = settings.cycle; $("#set-currency").value = settings.currency;
+    const th = settings.th;
+    let h = `<span class="h">Rule</span><span class="h">Pass at</span><span class="h">Fail at</span><span class="h">Fail below</span><span class="h">Fail above</span>`;
+    for (const [id, label, kind] of THR_ROWS) {
+      const inp = (k) => `<input type="number" step="any" id="thr-${id}-${k}" data-id="${id}" data-k="${k}" value="${th[id][k]}" aria-label="${esc(label)}: ${k}">`;
+      h += `<span>${esc(label)}</span>` + (kind === "band" ? `${inp("lo")}${inp("hi")}${inp("flo")}${inp("fhi")}` : `${inp("pass")}${inp("fail")}<span></span><span></span>`);
+    }
+    $("#thr").innerHTML = h;
+    $("#w-hard").value = th.weights.hard; $("#w-soft").value = th.weights.soft;
+  }
+  const openSettings = () => { fillSettings(); $("#modal").classList.add("open"); $("#set-cycle").focus(); };
+  const closeSettings = () => { $("#modal").classList.remove("open"); $("#btn-settings").focus(); };
+  $("#btn-settings").addEventListener("click", openSettings);
+  $("#set-cancel").addEventListener("click", closeSettings);
+  $("#set-x").addEventListener("click", closeSettings);
+  $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeSettings(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#modal").classList.contains("open")) closeSettings(); });
+  $("#set-reset").addEventListener("click", () => { settings = defaults(); fillSettings(); });
+  $("#set-apply").addEventListener("click", () => {
+    settings.cycle = $("#set-cycle").value.trim(); settings.currency = $("#set-currency").value.trim();
+    document.querySelectorAll("#thr input").forEach((i) => { const v = parseFloat(i.value); if (!Number.isNaN(v)) settings.th[i.dataset.id][i.dataset.k] = v; });
+    const wh = parseFloat($("#w-hard").value), ws = parseFloat($("#w-soft").value);
+    if (!Number.isNaN(wh)) settings.th.weights.hard = wh; if (!Number.isNaN(ws)) settings.th.weights.soft = ws;
+    saveSettings(); items.forEach(scoreItem); closeSettings(); render(); toast("Scores updated with the new settings.");
+  });
+
+  function render() { renderOverview(); renderDetail(); renderRulesDoc(); $("#csvout").value = csv(); }
+  items = EXAMPLES.map((e) => addText(e.name, e.text, true));
+  render();
+})();
+</script>
+</body>
+</html>

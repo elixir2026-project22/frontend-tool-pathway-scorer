@@ -29,7 +29,6 @@
   const OUTPUT = new Set(["production"]);
   const MODIFIER = new Set(["catalysis", "modulation", "stimulation", "inhibition", "necessary stimulation", "absolute inhibition"]);
   const SKIP_AREA = new Set(["compartment", "submap"]);
-  const MAX_SEGMENTS = 4000;
 
   function normName(s) {
     s = (s || "").replace(/[₀-₉⁺⁻]/g, (c) => SUB[c]).trim().toLowerCase();
@@ -421,20 +420,44 @@
     return g.keys.some((k) => k && cur.has(k));
   }
 
+  // Every crossing between lines that share no end node, counted on all segments (no size cap). A uniform grid keeps
+  // this fast on large maps: only segments whose bounding boxes share a cell are compared, and each crossing is counted
+  // once, in the cell that contains the crossing point - so the result equals the all-pairs count.
   function crossings(m) {
     const segs = [];
     m.arcs.forEach((a, i) => { for (let j = 0; j < a.pts.length - 1; j++) segs.push([i, a.pts[j], a.pts[j + 1]]); });
-    if (segs.length > MAX_SEGMENTS) return { n: NaN, pts: [] };
     const ends = m.arcs.map((a) => [a.src, a.tgt]);
     const share = (x, y) => x[0] === y[0] || x[0] === y[1] || x[1] === y[0] || x[1] === y[1];
+    if (segs.length < 2) return { n: 0, pts: [] };
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, tot = 0;
+    for (const [, p, q] of segs) {
+      x0 = Math.min(x0, p[0], q[0]); y0 = Math.min(y0, p[1], q[1]); x1 = Math.max(x1, p[0], q[0]); y1 = Math.max(y1, p[1], q[1]);
+      tot += Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]);
+    }
+    // cell size: about the mean segment extent, but never more than ~4 cells per segment on average
+    const span = Math.max(x1 - x0, y1 - y0, 1e-9);
+    const cell = Math.max(tot / segs.length, span / Math.ceil(Math.sqrt(4 * segs.length)), 1e-9);
+    const nx = Math.floor((x1 - x0) / cell) + 1;
+    const key = (cx, cy) => cy * nx + cx;
+    const ci = (v, o) => Math.floor((v - o) / cell);
+    const grid = new Map();
+    segs.forEach(([, p, q], k) => {
+      const ax = ci(Math.min(p[0], q[0]), x0), bx = ci(Math.max(p[0], q[0]), x0);
+      const ay = ci(Math.min(p[1], q[1]), y0), by = ci(Math.max(p[1], q[1]), y0);
+      for (let cx = ax; cx <= bx; cx++) for (let cy = ay; cy <= by; cy++) {
+        const kk = key(cx, cy); if (!grid.has(kk)) grid.set(kk, []); grid.get(kk).push(k);
+      }
+    });
     let n = 0; const pts = [];
-    for (let i = 0; i < segs.length; i++) {
-      const [ai, p1, p2] = segs[i];
-      for (let j = i + 1; j < segs.length; j++) {
-        const [aj, p3, p4] = segs[j];
-        if (ai === aj || share(ends[ai], ends[aj])) continue;
-        const x = segX(p1, p2, p3, p4);
-        if (x) { n++; pts.push(x); }
+    for (const [kk, list] of grid) {
+      for (let u = 0; u < list.length; u++) {
+        const [ai, p1, p2] = segs[list[u]];
+        for (let v = u + 1; v < list.length; v++) {
+          const [aj, p3, p4] = segs[list[v]];
+          if (ai === aj || share(ends[ai], ends[aj])) continue;
+          const x = segX(p1, p2, p3, p4);
+          if (x && key(ci(x[0], x0), ci(x[1], y0)) === kk) { n++; pts.push(x); }   // count it in its own cell only
+        }
       }
     }
     return { n, pts };
@@ -829,7 +852,7 @@
       } },
     { id: "crossings", kind: "hard", name: "No crossings",
       eval(r, t) {
-        if (r.edge_crossings === undefined || Number.isNaN(r.edge_crossings)) return { na: true, value: "too large", detail: `Over ${MAX_SEGMENTS} line segments, so crossings are not counted (same limit as score_rules.py).` };
+        if (r.edge_crossings === undefined || Number.isNaN(r.edge_crossings)) return { na: true, value: "–", detail: "No lines to check." };
         const v = r.crossings_per_arc;
         return { v, s: lowBetter(v, t.pass, t.fail), value: String(r.edge_crossings), unit: r.edge_crossings === 1 ? "crossing" : "crossings",
           detail: `${fmt(v, 3)} per line across ${r.arcs} lines. Pass ≤ ${t.pass} per line.` };
@@ -910,7 +933,7 @@
     "reference_nodes_differing", "reference_lines_identical"];
 
   const api = { parseText, parseSBGN, parseSBML, parseCellDesigner, parseEscher, scoreModel, evaluate, RULES, COLUMNS, loopShape, simpleCycles,
-    CURRENCY_DEFAULT, DEFAULT_THRESHOLDS, normName, MAX_SEGMENTS, PROCESS, METABOLITE, MODIFIER };
+    CURRENCY_DEFAULT, DEFAULT_THRESHOLDS, normName, PROCESS, METABOLITE, MODIFIER, crossings };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.LayoutScore = api;
 })(typeof window !== "undefined" ? window : globalThis);
